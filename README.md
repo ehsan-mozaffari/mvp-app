@@ -1,2 +1,2 @@
-# demo-code
-CICD demo
+# lab-app
+MVP App

@@ -1,2 +1,2 @@
-# lab-app
+# mvp-app
 MVP App

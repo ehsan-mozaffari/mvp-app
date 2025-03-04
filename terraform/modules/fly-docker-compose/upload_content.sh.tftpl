@@ -1,0 +1,25 @@
+#!/bin/bash
+# Script to upload HTML content to Fly.io volumes
+
+set -e
+
+# Configuration
+APP_NAME="${app_name}"
+REGION="${region}"
+VOLUME_ID="${volume_id}"
+CONTENT_PATH="${content_path}"
+
+echo "Uploading content to Fly.io volume..."
+echo "App: $APP_NAME"
+echo "Region: $REGION"
+echo "Volume: $VOLUME_ID"
+echo "Content path: $CONTENT_PATH"
+
+# Use flyctl to upload the content to the volume
+flyctl sftp shell --app "$APP_NAME" --volume "$VOLUME_ID" --region "$REGION" <<EOF
+mkdir -p /usr/share/nginx/html
+put -r $CONTENT_PATH/* /usr/share/nginx/html/
+ls -la /usr/share/nginx/html/
+EOF
+
+echo "Content upload complete!" 

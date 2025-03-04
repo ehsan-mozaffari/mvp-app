@@ -1,0 +1,107 @@
+name: "Terraform PR Validation"
+
+on:
+  pull_request:
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-pr.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform-validate:
+    name: "Terraform Validation"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.7"
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform Format Check
+        id: fmt
+        run: terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init -backend=false
+      
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan - Dev Environment
+        id: plan-dev
+        run: |
+          cd environments/dev
+          terraform init -backend=false
+          terraform plan -var="fly_api_token=${{ secrets.FLY_API_TOKEN }}" -no-color
+        continue-on-error: true
+        
+      - name: Terraform Plan - Docker Compose Dev Environment
+        id: plan-docker-compose
+        run: |
+          cd environments/docker-compose-dev
+          terraform init -backend=false
+          terraform plan -var="fly_api_token=${{ secrets.FLY_API_TOKEN }}" -no-color
+        continue-on-error: true
+        
+      - name: PR Comment
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN_DEV: "${{ steps.plan-dev.outputs.stdout }}"
+          PLAN_DOCKER: "${{ steps.plan-docker-compose.outputs.stdout }}"
+          FORMAT_RESULT: "${{ steps.fmt.outcome }}"
+          VALIDATE_RESULT: "${{ steps.validate.outcome }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { issue: { number: issue_number }, repo: { owner, repo } } = context;
+            
+            const formatStatus = process.env.FORMAT_RESULT === 'success' ? '✅' : '❌';
+            const validateStatus = process.env.VALIDATE_RESULT === 'success' ? '✅' : '❌';
+            
+            const output = `## Terraform PR Validation Results
+
+            | Check | Status |
+            | --- | --- |
+            | Format | ${formatStatus} |
+            | Validation | ${validateStatus} |
+
+            ### Development Environment Plan
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${process.env.PLAN_DEV}
+            \`\`\`
+
+            </details>
+
+            ### Docker Compose Environment Plan
+            <details><summary>Show Plan</summary>
+
+            \`\`\`terraform
+            ${process.env.PLAN_DOCKER}
+            \`\`\`
+
+            </details>`;
+
+            github.rest.issues.createComment({
+              issue_number,
+              owner,
+              repo,
+              body: output
+            }) 

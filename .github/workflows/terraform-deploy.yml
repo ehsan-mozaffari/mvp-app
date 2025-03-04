@@ -1,0 +1,97 @@
+name: "Terraform Deploy to Fly.io"
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - staging
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-deploy.yml'
+
+jobs:
+  determine-environment:
+    name: "Determine Environment"
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+    steps:
+      - name: Set Environment
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=prod" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+          fi
+
+  terraform-deploy:
+    name: "Deploy to ${{ needs.determine-environment.outputs.environment }}"
+    needs: determine-environment
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-environment.outputs.environment }}
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Fly.io Authentication
+        run: |
+          echo "${{ secrets.FLY_API_TOKEN }}" > ~/.fly/access_token
+
+      - name: Run Deployment Script
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh ${{ needs.determine-environment.outputs.environment }} apply --env-vars
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+  deploy-docker-compose:
+    name: "Deploy Docker Compose (Optional)"
+    runs-on: ubuntu-latest
+    environment: docker-compose
+    defaults:
+      run:
+        working-directory: ./terraform
+    
+    # Only run this job if explicitly triggered or if the docker-compose files changed
+    if: contains(github.event.head_commit.message, 'deploy-docker') || contains(toJSON(github.event.commits.*.modified), 'compose')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: "1.5.7"
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Fly.io Authentication
+        run: |
+          echo "${{ secrets.FLY_API_TOKEN }}" > ~/.fly/access_token
+
+      - name: Run Docker Compose Deployment
+        run: |
+          chmod +x deploy.sh
+          ./deploy.sh docker-compose-dev apply --env-vars
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }} 

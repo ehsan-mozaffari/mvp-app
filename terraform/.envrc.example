@@ -1,0 +1,11 @@
+# Fly.io API token
+export FLY_API_TOKEN="your_fly_api_token_here"
+
+# Default Fly.io organization (optional)
+export FLY_ORG="personal"
+
+# Default region (optional)
+export FLY_REGION="ams"
+
+# Path to Terraform executable (optional)
+# export TERRAFORM_PATH="/usr/local/bin/terraform" 
